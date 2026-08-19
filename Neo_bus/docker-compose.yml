@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+
+  # ─── Database ──────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: neobus_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: neobus
+      POSTGRES_PASSWORD: neobus
+      POSTGRES_DB: neobus_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neobus -d neobus_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── App (Frontend + Backend in one container) ─────────────
+  app:
+    image: hardik3114/neobus:latest
+    container_name: neobus_app
+    restart: always
+    ports:
+      - "3000:80"
+    environment:
+      - DATABASE_URL=postgresql://neobus:neobus@db:5432/neobus_db
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in a .env file next to docker-compose.yml}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:?Set JWT_REFRESH_SECRET_KEY in a .env file next to docker-compose.yml}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

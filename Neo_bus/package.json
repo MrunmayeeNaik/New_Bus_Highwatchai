@@ -1,0 +1,11 @@
+{
+  "name": "neobus-workspace",
+  "version": "1.0.0",
+  "description": "NeoBus Workspace root script to run backend and frontend concurrently.",
+  "scripts": {
+    "dev": "node start.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
