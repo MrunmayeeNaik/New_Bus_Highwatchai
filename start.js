@@ -4,19 +4,21 @@ const path = require('path');
 console.log('Starting NeoBus Backend and Frontend concurrently...');
 
 const rootDir = __dirname;
-const backendDir = path.join(rootDir, 'backend');
-const frontendDir = path.join(rootDir, 'frontend');
+const appDir = path.join(rootDir, 'Neo_bus');
+const backendDir = path.join(appDir, 'backend');
+const frontendDir = path.join(appDir, 'frontend');
 
 const isWindows = process.platform === 'win32';
-const pythonPath = isWindows 
-  ? path.join(rootDir, 'venv', 'Scripts', 'python.exe')
-  : path.join(rootDir, 'venv', 'bin', 'python');
+const pythonPath = isWindows
+  ? path.join(backendDir, '.venv', 'Scripts', 'python.exe')
+  : path.join(backendDir, '.venv', 'bin', 'python');
 
 // Spawn Backend
 console.log(`Spawning Backend from: ${backendDir}`);
+// No `shell: true` here — the interpreter path can contain spaces, and a shell
+// would split it into separate arguments.
 const backendProcess = spawn(pythonPath, ['-m', 'uvicorn', 'app.main:app', '--reload'], {
-  cwd: backendDir,
-  shell: true
+  cwd: backendDir
 });
 
 // Spawn Frontend

@@ -128,14 +128,21 @@ export default function Landing({ lang }) {
     localStorage.removeItem('recent_searches');
   };
 
-  // Filter city suggestions
-  const fromMatches = fromQuery.length >= 2
-    ? cities.filter(c => c.id !== toCity && (c.name.toLowerCase().includes(fromQuery.toLowerCase()) || c.code.toLowerCase().includes(fromQuery.toLowerCase())))
-    : [];
+  // Filter city suggestions. Focusing the field lists every city; typing narrows it.
+  // The full list also stays up while the box still holds the already-picked city
+  // name, so reopening it lets you switch cities without clearing the text first.
+  const cityMatches = (query, selectedId, excludeId) => {
+    const selected = cities.find(c => c.id === selectedId);
+    const showAll = !query.trim() || (selected && query === selected.name);
+    const q = query.toLowerCase();
+    return cities.filter(c =>
+      c.id !== excludeId &&
+      (showAll || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q))
+    );
+  };
 
-  const toMatches = toQuery.length >= 2
-    ? cities.filter(c => c.id !== fromCity && (c.name.toLowerCase().includes(toQuery.toLowerCase()) || c.code.toLowerCase().includes(toQuery.toLowerCase())))
-    : [];
+  const fromMatches = cityMatches(fromQuery, fromCity, toCity);
+  const toMatches = cityMatches(toQuery, toCity, fromCity);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">

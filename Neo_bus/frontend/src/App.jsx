@@ -6,6 +6,7 @@ import { useLanguageStore } from './store/languageStore';
 // Layout Components
 import Header from './components/Layout/Header';
 import Footer from './components/Layout/Footer';
+import ScrollToTop from './components/ScrollToTop';
 
 // Pages
 import Landing from './pages/Landing';
@@ -34,6 +35,7 @@ export default function App() {
 
   return (
     <Router>
+      <ScrollToTop />
       <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors duration-300">
 
         {/* Navbar Header */}

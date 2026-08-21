@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Phone, ShieldAlert, Award, Save, Wallet, Plus, Heart, Clock, Bell, Trash2, ArrowRight, Download, Calendar, RefreshCw } from 'lucide-react';
+import { User, Phone, ShieldAlert, Award, Save, Wallet, Plus, Heart, Clock, Bell, Trash2, ArrowRight, Download, Calendar, RefreshCw, Ticket, Share2, LifeBuoy } from 'lucide-react';
 import api from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,6 +29,14 @@ export default function Profile({ auth }) {
   // Filter states for bookings
   const [filterPnr, setFilterPnr] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [tripFilter, setTripFilter] = useState('upcoming');
+
+  // Support request form, opened per booking
+  const [supportForBooking, setSupportForBooking] = useState(null);
+  const [supportSubject, setSupportSubject] = useState('');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [supportPriority, setSupportPriority] = useState('medium');
+  const [supportSending, setSupportSending] = useState(false);
 
   // Form states
   const [topupAmount, setTopupAmount] = useState('');
@@ -182,6 +190,76 @@ export default function Profile({ auth }) {
       .catch(() => alert(`Failed to download ${docType} PDF.`));
   };
 
+  // Every booking falls into exactly one "My Trips" bucket: cancelled outright, already
+  // departed, or still ahead. Bookings awaiting payment stay under Upcoming so the
+  // Pay Now / Retry action remains reachable.
+  const tripCategory = (b) => {
+    if (b.status === 'cancelled') return 'cancelled';
+    const departsAt = b.journey_date || b.trip?.departure_time;
+    if (departsAt && new Date(departsAt).getTime() < Date.now()) return 'completed';
+    return 'upcoming';
+  };
+
+  const tripCounts = {
+    upcoming: bookings.filter(b => tripCategory(b) === 'upcoming').length,
+    completed: bookings.filter(b => tripCategory(b) === 'completed').length,
+    cancelled: bookings.filter(b => tripCategory(b) === 'cancelled').length
+  };
+
+  const visibleBookings = bookings.filter(b => tripCategory(b) === tripFilter);
+
+  const handleShareTicket = async (b) => {
+    const from = b.trip?.route?.source_city?.name || '';
+    const to = b.trip?.route?.destination_city?.name || '';
+    const journey = b.journey_date ? new Date(b.journey_date).toLocaleString() : 'N/A';
+    const text = `New Bus ticket\n${from} → ${to}\nBooking: ${b.booking_number}\nPNR: ${b.pnr}\nJourney: ${journey}`;
+
+    // navigator.share exists only in secure contexts and mainly on mobile, so fall back
+    // to the clipboard, and finally to a prompt the user can copy out of by hand.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'New Bus Ticket', text });
+      } catch {
+        // share sheet dismissed — nothing to report
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      alert('Ticket details copied to clipboard.');
+    } catch {
+      window.prompt('Copy your ticket details:', text);
+    }
+  };
+
+  const openSupportForm = (b) => {
+    setSupportForBooking(b.id);
+    setSupportSubject(`Issue with booking ${b.booking_number}`);
+    setSupportMessage('');
+    setSupportPriority('medium');
+  };
+
+  const handleSubmitSupport = (e) => {
+    e.preventDefault();
+    if (!supportSubject.trim() || !supportMessage.trim()) return;
+
+    setSupportSending(true);
+    api.post('/support/tickets', {
+      subject: supportSubject,
+      description: supportMessage,
+      priority: supportPriority
+    })
+      .then(() => {
+        alert('Support request raised. Our team will get back to you shortly.');
+        setSupportForBooking(null);
+        setSupportSubject('');
+        setSupportMessage('');
+      })
+      .catch(err => alert(err.response?.data?.detail || 'Failed to raise support request.'))
+      .finally(() => setSupportSending(false));
+  };
+
   const getStatusBadgeClass = (status) => {
     switch (status) {
       case 'confirmed': return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400';
@@ -294,13 +372,34 @@ export default function Profile({ auth }) {
                 </form>
               </div>
 
+              {/* My Trips categories */}
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'upcoming', label: 'Upcoming' },
+                  { id: 'completed', label: 'Completed' },
+                  { id: 'cancelled', label: 'Cancelled' }
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setTripFilter(cat.id)}
+                    className={`px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${
+                      tripFilter === cat.id
+                        ? 'bg-brand-500 text-white shadow-md shadow-brand-500/20'
+                        : 'bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-850 text-slate-500 dark:text-slate-400 hover:text-brand-500'
+                    }`}
+                  >
+                    {cat.label} ({tripCounts[cat.id]})
+                  </button>
+                ))}
+              </div>
+
               {/* Bookings Ledger */}
               <div className="space-y-4">
-                {bookings.length === 0 ? (
+                {visibleBookings.length === 0 ? (
                   <div className="text-center py-12 bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-850 rounded-2xl text-slate-400 text-xs">
-                    No bookings logged matching query criteria.
+                    No {tripFilter} trips found.
                   </div>
-                ) : bookings.map(b => (
+                ) : visibleBookings.map(b => (
                   <div key={b.id} className="bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-850 p-5 rounded-2xl shadow-sm space-y-4">
                     <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3">
                       <div>
@@ -325,6 +424,24 @@ export default function Profile({ auth }) {
                       </div>
 
                       <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                        <button
+                          onClick={() => navigate('/ticket', { state: { booking: b } })}
+                          className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-bold"
+                        >
+                          <Ticket size={12} /> View Ticket
+                        </button>
+                        <button
+                          onClick={() => handleShareTicket(b)}
+                          className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-bold"
+                        >
+                          <Share2 size={12} /> Share
+                        </button>
+                        <button
+                          onClick={() => openSupportForm(b)}
+                          className="bg-slate-50 hover:bg-slate-100 dark:bg-slate-850 dark:hover:bg-slate-800 text-slate-500 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] font-bold"
+                        >
+                          <LifeBuoy size={12} /> Support
+                        </button>
                         {b.status === 'confirmed' && (
                           <>
                             <button
@@ -357,6 +474,51 @@ export default function Profile({ auth }) {
                         )}
                       </div>
                     </div>
+
+                    {supportForBooking === b.id && (
+                      <form onSubmit={handleSubmitSupport} className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-3">
+                        <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Raise a support request</h5>
+                        <input
+                          type="text"
+                          value={supportSubject}
+                          onChange={e => setSupportSubject(e.target.value)}
+                          placeholder="Subject"
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 px-3 py-2 rounded-xl text-xs outline-none"
+                        />
+                        <textarea
+                          value={supportMessage}
+                          onChange={e => setSupportMessage(e.target.value)}
+                          placeholder="Describe your issue..."
+                          rows={3}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 px-3 py-2 rounded-xl text-xs outline-none resize-y"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={supportPriority}
+                            onChange={e => setSupportPriority(e.target.value)}
+                            className="bg-slate-50 dark:bg-slate-950 border border-slate-250 dark:border-slate-800 px-3 py-2 rounded-xl text-xs outline-none font-bold text-slate-500"
+                          >
+                            <option value="low">Low priority</option>
+                            <option value="medium">Medium priority</option>
+                            <option value="high">High priority</option>
+                          </select>
+                          <button
+                            type="submit"
+                            disabled={supportSending || !supportSubject.trim() || !supportMessage.trim()}
+                            className="bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-xl text-[10px] font-bold disabled:opacity-50"
+                          >
+                            {supportSending ? 'Sending…' : 'Submit Request'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSupportForBooking(null)}
+                            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-3 py-2 text-[10px] font-bold"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 ))}
               </div>

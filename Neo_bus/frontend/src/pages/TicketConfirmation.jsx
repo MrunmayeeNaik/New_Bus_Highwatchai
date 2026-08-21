@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Ticket, Calendar, Clock, MapPin, Printer, Ban, Download, FileText, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, Ticket, Calendar, Clock, MapPin, Printer, Ban, Download, FileText, ShieldAlert, Home } from 'lucide-react';
 import QRCode from 'qrcode';
 import api from '../services/api';
 
@@ -277,6 +277,17 @@ export default function TicketConfirmation() {
             <span>Cancel Ticket</span>
           </button>
         )}
+      </div>
+
+      {/* Kept on its own row so navigating away is not adjacent to Cancel Ticket */}
+      <div className="mt-6 flex justify-center print:hidden">
+        <button
+          onClick={() => navigate('/')}
+          className="px-6 py-2.5 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-300 font-bold rounded-xl flex items-center space-x-2 text-sm transition-all"
+        >
+          <Home size={16} />
+          <span>Back to Home</span>
+        </button>
       </div>
 
     </div>
