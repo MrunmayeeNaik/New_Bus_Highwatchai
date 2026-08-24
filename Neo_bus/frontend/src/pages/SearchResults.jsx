@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Heart, ArrowRight, Star, Clock, AlertTriangle, ShieldCheck, MapPin, Filter, Wifi, Power, Tv, Eye } from 'lucide-react';
 import api, { mockData, releaseSeatLocksOnUnload } from '../services/api';
 
@@ -33,6 +33,7 @@ function formatDuration(startIso, endIso) {
 export default function SearchResults() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const fromCity = searchParams.get('from');
   const toCity = searchParams.get('to');
@@ -60,11 +61,22 @@ export default function SearchResults() {
 
   // Seats already locked by the current user for the trip they're viewing (e.g. after
   // navigating back from the checkout page without confirming the booking yet)
-  const ownLockedSeats = seatLayout.filter(s => s.status === 'locked' && s.held_by === profileId);
+  // profileId is undefined when signed out, and a seat held by nobody reports held_by
+  // as undefined too — without the first check those compare equal and every foreign
+  // hold is claimed as the visitor's own.
+  const ownLockedSeats = profileId
+    ? seatLayout.filter(s => s.status === 'locked' && s.held_by === profileId)
+    : [];
   const ownLockedSeatIdsKey = ownLockedSeats.map(s => s.id).join(',');
-  const ownLockSecondsLeft = ownLockedSeats.length > 0
-    ? Math.min(...ownLockedSeats.map(s => (new Date(s.locked_until).getTime() - nowTick) / 1000).filter(v => Number.isFinite(v)))
+  // Math.min() with no arguments returns Infinity, so an empty list here would render
+  // the hold as never expiring. Keep it null instead and let the banner say so.
+  const ownLockDeadlines = ownLockedSeats
+    .map(s => (new Date(s.locked_until).getTime() - nowTick) / 1000)
+    .filter(v => Number.isFinite(v));
+  const ownLockSecondsLeft = ownLockDeadlines.length > 0
+    ? Math.min(...ownLockDeadlines)
     : null;
+  const hasOwnLock = ownLockedSeats.length > 0;
 
   // Ticks once a second so the hold countdown above the seat map stays live
   useEffect(() => {
@@ -219,6 +231,18 @@ export default function SearchResults() {
   }, [fromCity, toCity]);
 
   const handleSelectTrip = (trip) => {
+    // Seat holds are per-user and booking needs an account, so send visitors to sign in
+    // before the seat map rather than letting them pick seats and fail at checkout.
+    if (!sessionStorage.getItem('access_token')) {
+      navigate('/login', {
+        state: {
+          from: `${location.pathname}${location.search}`,
+          reason: 'Please log in or create an account to select seats.'
+        }
+      });
+      return;
+    }
+
     setSelectedTrip(trip);
     setSelectedSeats([]);
     setActiveDeck('lower');
@@ -234,7 +258,10 @@ export default function SearchResults() {
 
   const handleSeatClick = (seat) => {
     const profile = JSON.parse(sessionStorage.getItem('user_profile') || '{}');
-    if (seat.status === 'booked' || (seat.status === 'locked' && seat.held_by !== profile.id)) {
+    // Only a seat this user is holding is re-selectable; without the profile.id check a
+    // signed-out visitor (id undefined) matches an unheld lock (held_by undefined).
+    const isOwnHold = Boolean(profile.id) && seat.held_by === profile.id;
+    if (seat.status === 'booked' || (seat.status === 'locked' && !isOwnHold)) {
       return;
     }
     
@@ -687,15 +714,18 @@ export default function SearchResults() {
                   <div className="bg-slate-50 dark:bg-slate-950 p-6 border-t border-slate-200/50 dark:border-slate-900/50 transition-all duration-300">
                     
                     {/* Active Hold Countdown — visible while this user still holds a lock on this trip */}
-                    {ownLockSecondsLeft !== null && (
+                    {hasOwnLock && (
                       <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/30 p-3 rounded-xl flex items-center justify-between mb-6">
                         <span className="text-amber-800 dark:text-amber-400 text-xs font-bold flex items-center gap-2">
                           <Clock size={14} className="animate-pulse" />
-                          You're holding {ownLockedSeats.length} seat{ownLockedSeats.length > 1 ? 's' : ''} ({ownLockedSeats.map(s => s.seat_number).join(', ')}). Time remaining:
+                          You're holding {ownLockedSeats.length} seat{ownLockedSeats.length > 1 ? 's' : ''} ({ownLockedSeats.map(s => s.seat_number).join(', ')}).
+                          {ownLockSecondsLeft !== null ? ' Time remaining:' : ' Held for up to 10 minutes.'}
                         </span>
-                        <span className="text-amber-800 dark:text-amber-400 text-sm font-black bg-white dark:bg-slate-950 px-3 py-1 rounded-lg border border-amber-200 dark:border-amber-900">
-                          {formatTime(ownLockSecondsLeft)}
-                        </span>
+                        {ownLockSecondsLeft !== null && (
+                          <span className="text-amber-800 dark:text-amber-400 text-sm font-black bg-white dark:bg-slate-950 px-3 py-1 rounded-lg border border-amber-200 dark:border-amber-900">
+                            {formatTime(ownLockSecondsLeft)}
+                          </span>
+                        )}
                       </div>
                     )}
 

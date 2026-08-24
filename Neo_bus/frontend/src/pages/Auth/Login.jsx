@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
 import api from '../../services/api';
 
 export default function Login({ auth }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Where to return once signed in. Screens that gate on auth (e.g. seat selection)
+  // pass the page the visitor was on, so they resume instead of landing on the home page.
+  const from = location.state?.from || '/';
+  const gateReason = location.state?.reason;
+  const goBackToOrigin = () => navigate(from, { replace: true });
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -22,7 +29,7 @@ export default function Login({ auth }) {
         api.get('/auth/me', { headers: { Authorization: `Bearer ${access_token}` } })
           .then(profileRes => {
             auth.loginStore(access_token, refresh_token, role, profileRes.data);
-            navigate('/');
+            goBackToOrigin();
           })
           .catch(() => {
             // fallback profile mapping
@@ -35,7 +42,7 @@ export default function Login({ auth }) {
               reward_points: 120
             };
             auth.loginStore(access_token, refresh_token, role, mockUser);
-            navigate('/');
+            goBackToOrigin();
           });
       })
       .catch(() => {
@@ -65,7 +72,7 @@ export default function Login({ auth }) {
         };
         auth.loginStore('mock-access-token', 'mock-refresh-token', role, mockUser);
         alert(`Offline Mode: Logged in successfully as Mock ${role.toUpperCase()}`);
-        navigate('/');
+        goBackToOrigin();
       });
   };
 
@@ -76,6 +83,12 @@ export default function Login({ auth }) {
           <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Welcome Back</h2>
           <p className="text-slate-400 text-sm">Log in to book bus tickets and manage your profile</p>
         </div>
+
+        {gateReason && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-900/40 text-amber-800 dark:text-amber-400 text-xs font-bold p-3 rounded-xl text-center">
+            {gateReason}
+          </div>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="relative flex flex-col">
@@ -118,7 +131,7 @@ export default function Login({ auth }) {
 
         <div className="text-center text-xs text-slate-400 space-y-2 pt-4">
           <div className="flex items-center justify-between px-1">
-            <span>Don't have an account? <Link to="/register" className="text-brand-500 font-bold hover:underline">Register</Link></span>
+            <span>Don't have an account? <Link to="/register" state={{ from, reason: gateReason }} className="text-brand-500 font-bold hover:underline">Register</Link></span>
             <Link to="/forgot-password" className="text-brand-500 font-bold hover:underline">Forgot Password?</Link>
           </div>
           <div className="text-[10px] bg-slate-50 dark:bg-slate-950 p-2.5 rounded-lg leading-relaxed text-left border border-slate-200/40 dark:border-slate-800/40">

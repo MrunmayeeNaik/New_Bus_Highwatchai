@@ -131,6 +131,48 @@ def get_all_active_locks_for_trip(trip_id: str) -> dict:
                     _memory_locks.pop(k, None)
         return locks
 
+def get_all_active_locks_with_expiry_for_trip(trip_id: str) -> dict:
+    """
+    Returns {seat_id: {"user_id": str, "expires_at": datetime}} for active locks.
+
+    The holder and the expiry come from the same record here. Reading them from
+    separate places (the cache for one, the database for the other) lets them
+    disagree, which surfaces as a lock with no expiry for the client to count down.
+    """
+    locks = {}
+    now = datetime.now(timezone.utc)
+
+    if redis_client is not None:
+        try:
+            pattern = f"seat_lock:{trip_id}:*"
+            for k in redis_client.keys(pattern):
+                val = redis_client.get(k)
+                if not val:
+                    continue
+                # Redis owns the countdown; translate its remaining TTL into an
+                # absolute timestamp. -1 means no expiry set, -2 means already gone.
+                ttl = redis_client.ttl(k)
+                expires_at = now + timedelta(seconds=ttl) if ttl and ttl > 0 else None
+                locks[k.split(":")[-1]] = {"user_id": val, "expires_at": expires_at}
+            return locks
+        except Exception:
+            pass
+
+    with _lock:
+        prefix = f"seat_lock:{trip_id}:"
+        for k, item in list(_memory_locks.items()):
+            if not k.startswith(prefix):
+                continue
+            if item["expires_at"] > now:
+                locks[k.split(":")[-1]] = {
+                    "user_id": item["user_id"],
+                    "expires_at": item["expires_at"],
+                }
+            else:
+                _memory_locks.pop(k, None)
+        return locks
+
+
 def cleanup_expired_memory_locks() -> int:
     """
     Prunes expired locks from memory.

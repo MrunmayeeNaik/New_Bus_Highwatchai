@@ -51,6 +51,14 @@ server {\n\
         proxy_set_header X-Real-IP $remote_addr;\n\
     }\n\
 \n\
+    # Swagger and ReDoc are served from the root, outside /api/, so they need\n\
+    # their own rule or the SPA fallback below would swallow them.\n\
+    location ~ ^/(docs|redoc)$ {\n\
+        proxy_pass http://127.0.0.1:8000;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+    }\n\
+\n\
     # Serve React SPA — fallback to index.html\n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\

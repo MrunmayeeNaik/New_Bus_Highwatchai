@@ -196,7 +196,15 @@ class BookingService:
             
         start_date = datetime.combine(journey_date.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
         end_date = datetime.combine(journey_date.date(), datetime.max.time()).replace(tzinfo=timezone.utc)
-        
+
+        # Payment rejects any trip whose departure has passed, so a departed bus must not
+        # reach the results in the first place — otherwise a same-day search lets someone
+        # pick a seat and fill in passenger details before failing at the payment step.
+        # For future dates `now` is behind start_date and this changes nothing.
+        now = datetime.now(timezone.utc)
+        if start_date < now:
+            start_date = now
+
         from sqlalchemy.orm import joinedload, selectinload
         query = db.query(Trip).options(
             joinedload(Trip.bus).selectinload(Bus.amenities),
@@ -372,11 +380,13 @@ class BookingService:
         # Get all seats for the bus
         seats = db.query(Seat).filter(Seat.bus_id == trip.bus_id).all()
         
-        # Get active seat locks (Query from Redis)
-        from app.core.redis_store import get_all_active_locks_for_trip
-        locked_seat_ids = get_all_active_locks_for_trip(str(trip_id))
-        
-        # Merge with active DB locks if Redis falls back
+        # Active seat locks, holder and expiry together, from the cache (Redis or the
+        # in-memory fallback).
+        from app.core.redis_store import get_all_active_locks_with_expiry_for_trip
+        cached_locks = get_all_active_locks_with_expiry_for_trip(str(trip_id))
+
+        # Merge with active DB locks, which are authoritative when the cache has been
+        # restarted or a write to it failed.
         now = datetime.now(timezone.utc)
         active_locks = db.query(SeatLock).filter(
             SeatLock.trip_id == trip_id,
@@ -384,19 +394,30 @@ class BookingService:
         ).all()
         for lock in active_locks:
             s_id_str = str(lock.seat_id)
-            if s_id_str not in locked_seat_ids:
-                locked_seat_ids[s_id_str] = str(lock.user_id)
-        
-        # Convert keys back to UUID
-        locked_seat_ids_uuid = {}
-        for s_id, u_id in locked_seat_ids.items():
-            try:
-                locked_seat_ids_uuid[UUID(s_id)] = UUID(u_id)
-            except ValueError:
-                pass
+            entry = cached_locks.get(s_id_str)
+            if entry is None:
+                cached_locks[s_id_str] = {
+                    "user_id": str(lock.user_id),
+                    "expires_at": lock.expires_at,
+                }
+            elif entry.get("expires_at") is None:
+                # Cache knew the holder but not the deadline — fill it from the row.
+                entry["expires_at"] = lock.expires_at
 
-        # Expiry timestamps for locked seats (used by the client to show a live hold countdown)
-        lock_expiry_by_seat = {lock.seat_id: lock.expires_at for lock in active_locks}
+        # Convert keys back to UUID, carrying the expiry alongside the holder so a
+        # seat reported as locked always has a deadline the client can count down.
+        locked_seat_ids_uuid = {}
+        lock_expiry_by_seat = {}
+        for s_id, entry in cached_locks.items():
+            try:
+                seat_uuid = UUID(s_id)
+                locked_seat_ids_uuid[seat_uuid] = UUID(entry["user_id"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            expires_at = entry.get("expires_at")
+            # A lock we cannot date is indistinguishable from a stuck hold, so fall
+            # back to the standard 10-minute TTL rather than emitting null.
+            lock_expiry_by_seat[seat_uuid] = expires_at or (now + timedelta(minutes=10))
 
         # Get confirmed booked seats
         confirmed_passengers = db.query(BookingPassenger).join(Booking).filter(

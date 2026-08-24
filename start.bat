@@ -25,8 +25,28 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo  [1/3] Pulling latest images from Docker Hub...
-docker compose pull
+:: docker-compose requires both JWT secrets. On a fresh clone there is no .env yet,
+:: so generate one with real random values rather than shipping fixed secrets.
+if not exist ".env" (
+    echo  [setup] No .env found - generating JWT secrets...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\new-env.ps1"
+    if errorlevel 1 (
+        echo  [ERROR] Could not create .env
+        pause
+        exit /b 1
+    )
+    echo.
+)
+
+echo  [1/3] Building the app image from source...
+echo  (first run takes a few minutes; later runs are cached)
+docker compose build
+if errorlevel 1 (
+    echo.
+    echo  [ERROR] Build failed. Scroll up for the cause.
+    pause
+    exit /b 1
+)
 echo.
 
 echo  [2/3] Starting all services (Database + Backend + Frontend)...
@@ -41,9 +61,12 @@ echo  ============================================================
 echo   Neo Bus is LIVE!
 echo  ============================================================
 echo.
-echo   Frontend  ->  http://localhost:3000
-echo   Backend   ->  http://localhost:3000/api/docs
-echo   API Docs  ->  http://localhost:3000/api/docs
+echo   App       ->  http://localhost:3000
+echo   API Docs  ->  http://localhost:3000/docs
+echo   Database  ->  localhost:5433  (neobus/neobus)
+echo.
+echo   Log in as admin@newbus.com / password123, then click
+echo   "Seed Master Data" to populate cities, routes and trips.
 echo.
 echo  ============================================================
 echo.

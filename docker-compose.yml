@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
 
   # ─── Database ──────────────────────────────────────────────
@@ -23,7 +21,12 @@ services:
 
   # ─── App (Frontend + Backend in one container) ─────────────
   app:
-    image: hardik3114/neobus:latest
+    # Built from this repository rather than pulled from a registry, so the running
+    # container always matches the source you are looking at.
+    build:
+      context: ./Neo_bus
+      dockerfile: ../Dockerfile
+    image: neobus-app:latest
     container_name: neobus_app
     restart: always
     ports:

@@ -1,116 +1,129 @@
-# New Bus - Intercity Bus Booking Platform
+# New Bus
 
-New Bus is a production-ready, enterprise-grade intercity bus booking marketplace modeled after RedBus. It connects passengers, operators, and platform administrators through a sleek, responsive design and robust service-oriented architecture.
-
----
-
-## 🚀 Tech Stack
-
-### Backend
-*   **Python 3.12+** / **FastAPI**: Fast, asynchronous REST API.
-*   **SQLAlchemy ORM**: Database object mapping.
-*   **PostgreSQL**: High-concurrency transaction storage.
-*   **JWT & bcrypt**: Secure password hashing and token rotation.
-*   **Pytest**: Automated test suite execution.
-
-### Frontend
-*   **React** / **Vite**: Fast, single-page application bundling.
-*   **Tailwind CSS**: Modern aesthetics with glassmorphic cards and dark-mode tokens.
-*   **Axios**: Network request adapter with auto JWT attachment.
-*   **Lucide React**: Clean vector icon toolkit.
+Intercity bus booking platform. React + Vite frontend, FastAPI backend, PostgreSQL.
 
 ---
 
-## 📁 Project Folder Layout
+## Run it (Docker — recommended)
 
-```text
-Neo_bus/
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── app/
-│   │   ├── main.py            # Entry point & CORS/routing config
-│   │   ├── core/              # DB configs, secrets, passlib
-│   │   ├── models/            # SQLAlchemy database tables
-│   │   ├── schemas/           # Pydantic validation models
-│   │   ├── repositories/      # SOLID database queries CRUD
-│   │   ├── services/          # Concurrency holds, fares, refunds
-│   │   └── routers/           # Auth, bookings, support, operator, admin
-│   └── tests/                 # Isolated pytest suite
-├── frontend/
-│   ├── package.json
-│   ├── tailwind.config.js     # Branding rose-500 styling
-│   ├── postcss.config.js
-│   ├── src/
-│   │   ├── main.jsx           # React app mount
-│   │   ├── App.jsx            # Routing and layouts
-│   │   ├── index.css          # Base Tailwind and glassmorphism styles
-│   │   ├── services/          # api.js Client & Fallback mock engine
-│   │   ├── store/             # authStore global hooks
-│   │   ├── components/        # Layout elements (Header, Footer)
-│   │   └── pages/             # Landing, Search, Checkout, Confirmations, Dashboards
-└── docker-compose.yml         # DevOps multi-container build
-```
+**Requires:** Docker Desktop, running.
 
----
-
-## 🛠️ Local Development Setup
-
-### 1. Backend Server Setup
-1.  Navigate to the `backend` directory:
-    ```bash
-    cd backend
-    ```
-2.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  Run the FastAPI development server:
-    ```bash
-    uvicorn app.main:app --reload
-    ```
-4.  Open API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-### 2. Frontend React Setup
-1.  Navigate to the `frontend` directory:
-    ```bash
-    cd ../frontend
-    ```
-2.  Install packages:
-    ```bash
-    npm install
-    ```
-3.  Launch the Vite hot-reloading dev server:
-    ```bash
-    npm run dev
-    ```
-4.  Open the web application: [http://localhost:5173](http://localhost:5173)
-
----
-
-## 🐳 Docker Deployment (Production Compose)
-
-To spin up the PostgreSQL database and the backend API container in one command:
 ```bash
-docker-compose up --build
+start.bat                      # Windows
+docker compose up -d --build   # any platform
 ```
-This automatically maps port `5432` for Postgres and `8000` for FastAPI.
+
+First run takes a few minutes to build; later runs are cached. JWT secrets are generated automatically — there is nothing to configure.
+
+| | |
+|---|---|
+| App | http://localhost:3000 |
+| API docs (Swagger) | http://localhost:3000/docs |
+| PostgreSQL | `localhost:5433` — user/password/db all `neobus` |
+
+To stop:
+```bash
+stop.bat                       # Windows
+docker compose down            # any platform
+```
+
+`docker compose down -v` also deletes the database volume.
 
 ---
 
-## 💡 Seeding Demo Data
+## First run: load the demo data
 
-To populate the search engine with states, cities (Mumbai, Bangalore, Hyderabad), routes, operators, and trips:
-1.  Log into the app as **Admin** by entering:
-    *   **Email**: `admin@newbus.com`
-    *   **Password**: *any password (mock login fallback)*
-2.  Click **Seed Master Data** in the top-right of the Admin Dashboard.
-3.  Your database will instantly fill with schedules and seat maps.
+The database starts with user accounts but **no cities, routes or trips** — search will be empty until you seed it.
+
+1. Open http://localhost:3000 and log in as `admin@newbus.com` / `password123`
+2. Click **Seed Master Data** on the Admin Dashboard
+
+This creates states, cities, routes, operators, buses, seat maps and trips for the next three days.
 
 ---
 
-## 🔒 Production Checklist
-*   [ ] Change default `JWT_SECRET_KEY` in env variables.
-*   [ ] Bind uvicorn to behind an Nginx reverse proxy.
-*   [ ] Force SSL/HTTPS encryption on Nginx.
-*   [ ] Turn off `SEED_DEMO_DATA` in config.py.
+## Demo accounts
+
+All use the password `password123`.
+
+| Email | Role |
+|---|---|
+| `passenger@newbus.com` | Passenger — starts with a ₹5,000 wallet balance |
+| `operator@newbus.com` | Bus operator |
+| `support@newbus.com` | Support agent |
+| `admin@newbus.com` | Admin |
+
+---
+
+## Run it (dev mode, hot reload)
+
+**Requires:** Node 20+, Python 3.12+, Docker (for PostgreSQL only).
+
+```bash
+# 1. Database
+docker compose up -d db
+
+# 2. Backend deps — the venv must be at this exact path
+cd Neo_bus/backend
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt     # Windows
+# .venv/bin/pip install -r requirements.txt       # macOS / Linux
+
+# 3. Frontend deps
+cd ../frontend
+npm install
+
+# 4. Start both from the repo root
+cd ../..
+npm run dev
+```
+
+| | |
+|---|---|
+| App | http://localhost:5173 |
+| API docs | http://localhost:8000/docs |
+
+`Ctrl+C` stops both processes. A `.env` is created automatically on first start.
+
+To seed from the command line instead of the Admin Dashboard:
+```bash
+cd Neo_bus/backend
+.venv\Scripts\python seed_all_demo.py
+```
+
+---
+
+## Tests
+
+```bash
+cd Neo_bus/backend
+.venv\Scripts\python -m pytest tests -q      # 37 unit + integration tests
+```
+
+Smoke-test a running server over HTTP:
+```bash
+.venv\Scripts\python test_all_apis.py                        # dev mode (:8000)
+NEOBUS_API=http://localhost:3000 .venv\Scripts\python test_all_apis.py   # Docker
+```
+
+---
+
+## Scope
+
+**Included:** authentication, city/route search, seat selection with concurrency locks, booking and payment, wallet, coupons, ticket and GST invoice PDFs with QR, cancellation and refunds, My Trips, boarding/dropping points, support tickets, operator and admin dashboards, analytics.
+
+**Deferred:** live bus tracking, QR check-in scanning, notification dispatch (push/SMS/email), journey ratings, in-app boarding maps.
+
+---
+
+## Troubleshooting
+
+**Port 8000 already in use** — a previous backend is still running:
+```powershell
+Get-NetTCPConnection -LocalPort 8000 | Select-Object OwningProcess
+Stop-Process -Id <pid> -Force
+```
+
+**Search returns nothing** — the demo data has not been seeded. See *First run* above.
+
+**`npm run dev` cannot find Python** — the virtual environment must be at `Neo_bus/backend/.venv`; the launcher looks for it there by path.
