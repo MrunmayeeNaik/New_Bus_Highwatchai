@@ -181,8 +181,8 @@ def seed_demo_data(
             ("VRL Travels", "MH-14-ZZ-5555", "Non_AC_Sleeper")
         ]:
             op = operators[op_name]
-            existing_bus = db.query(Bus).filter_by(bus_number=number).first()
-            if not existing_bus:
+            bus = db.query(Bus).filter_by(bus_number=number).first()
+            if not bus:
                 bus = Bus(operator_id=op.id, bus_number=number, bus_type=btype, capacity=32, rating=op.rating, is_active=True)
                 bus.amenities = [amenities["Wi-Fi"], amenities["Charging Point"], amenities["Water Bottle"], amenities["Blanket"]]
                 db.add(bus)
@@ -201,110 +201,126 @@ def seed_demo_data(
                         db.add(seat)
                 db.flush()
 
-                # Schedule standard trips (today, tomorrow, next-day)
-                for offset in [0, 1, 2]:
-                    trip_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=offset)
-                    
-                    # Trip Mumbai to Pune
-                    trip_mp = Trip(
-                        bus_id=bus.id,
-                        operator_id=op.id,
-                        route_id=routes["BOM_PNQ"].id,
-                        departure_time=datetime.datetime.combine(trip_date.date(), datetime.time(8, 0)).replace(tzinfo=datetime.timezone.utc),
-                        arrival_time=datetime.datetime.combine(trip_date.date(), datetime.time(11, 0)).replace(tzinfo=datetime.timezone.utc),
-                        price=650.0,
-                        status="scheduled"
-                    )
-                    
-                    # Trip Bangalore to Hyderabad
-                    trip_bh = Trip(
-                        bus_id=bus.id,
-                        operator_id=op.id,
-                        route_id=routes["BLR_HYD"].id,
-                        departure_time=datetime.datetime.combine(trip_date.date(), datetime.time(21, 0)).replace(tzinfo=datetime.timezone.utc),
-                        arrival_time=datetime.datetime.combine(trip_date.date() + datetime.timedelta(days=1), datetime.time(6, 0)).replace(tzinfo=datetime.timezone.utc),
-                        price=1200.0,
-                        status="scheduled"
-                    )
-                    db.add_all([trip_mp, trip_bh])
-                    db.flush()
-                    
-                    # Seed Boarding & Dropping TripPoints for the trips
-                    tp1 = TripPoint(
-                        trip_id=trip_mp.id,
-                        point_name="Mumbai Borivali East terminal",
-                        point_type="boarding",
-                        time=trip_mp.departure_time,
-                        landmark="Near National Park Gate",
-                        gps_coordinates="19.2289,72.8617",
-                        pickup_instructions="Wait next to the main ticket booking counter."
-                    )
-                    tp2 = TripPoint(
-                        trip_id=trip_mp.id,
-                        point_name="Sion Circle terminal",
-                        point_type="boarding",
-                        time=trip_mp.departure_time + datetime.timedelta(minutes=30),
-                        landmark="Near Sion Circle Flyover",
-                        gps_coordinates="19.0372,72.8631",
-                        pickup_instructions="Wait at the Neeta Travels office board."
-                    )
-                    tp3 = TripPoint(
-                        trip_id=trip_mp.id,
-                        point_name="Pune Wakad Dropoff",
-                        point_type="dropping",
-                        time=trip_mp.arrival_time - datetime.timedelta(minutes=30),
-                        landmark="Wakad Ginger Hotel",
-                        gps_coordinates="18.5991,73.7663",
-                        pickup_instructions="Drop point is near the highway flyover bypass."
-                    )
-                    tp4 = TripPoint(
-                        trip_id=trip_mp.id,
-                        point_name="Pune Swargate Terminal",
-                        point_type="dropping",
-                        time=trip_mp.arrival_time,
-                        landmark="Swargate Bus Stand Gate",
-                        gps_coordinates="18.5018,73.8636",
-                        pickup_instructions="Main terminal exit gate."
-                    )
-                    
-                    tp5 = TripPoint(
-                        trip_id=trip_bh.id,
-                        point_name="Bangalore Majestic terminal",
-                        point_type="boarding",
-                        time=trip_bh.departure_time,
-                        landmark="Opposite Railway station entry",
-                        gps_coordinates="12.9778,77.5724",
-                        pickup_instructions="Wait at Platform 5 Neeta travels counter."
-                    )
-                    tp6 = TripPoint(
-                        trip_id=trip_bh.id,
-                        point_name="Anantapur bypass boarding",
-                        point_type="boarding",
-                        time=trip_bh.departure_time + datetime.timedelta(hours=4),
-                        landmark="Bypass Toll plaza",
-                        gps_coordinates="14.6819,77.6006",
-                        pickup_instructions="Wait on the highway service lane near toll."
-                    )
-                    tp7 = TripPoint(
-                        trip_id=trip_bh.id,
-                        point_name="Hyderabad Gachibowli Dropoff",
-                        point_type="dropping",
-                        time=trip_bh.arrival_time - datetime.timedelta(hours=1),
-                        landmark="Gachibowli Outer Ring Road",
-                        gps_coordinates="17.4401,78.3489",
-                        pickup_instructions="Drop point near flyover start."
-                    )
-                    tp8 = TripPoint(
-                        trip_id=trip_bh.id,
-                        point_name="Hyderabad Ameerpet Terminal",
-                        point_type="dropping",
-                        time=trip_bh.arrival_time,
-                        landmark="Metro station pillar A10",
-                        gps_coordinates="17.4375,78.4482",
-                        pickup_instructions="Drop point under the metro pillar."
-                    )
-                    db.add_all([tp1, tp2, tp3, tp4, tp5, tp6, tp7, tp8])
+
+            # Trips are (re)generated on every seed run, not just when the bus is first
+            # created. A database seeded days ago would otherwise hold only trips whose
+            # departure time has already passed, leaving the demo with nothing bookable.
+            # Schedule standard trips (today, tomorrow, next-day)
+            for offset in [0, 1, 2]:
+                trip_date = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=offset)
+
+                # Skip the day if this bus is already scheduled on it, so repeat seeds
+                # top up missing days instead of duplicating existing ones.
+                day_start = datetime.datetime.combine(trip_date.date(), datetime.time.min).replace(tzinfo=datetime.timezone.utc)
+                day_end = day_start + datetime.timedelta(days=1)
+                already_scheduled = db.query(Trip).filter(
+                    Trip.bus_id == bus.id,
+                    Trip.departure_time >= day_start,
+                    Trip.departure_time < day_end
+                ).first()
+                if already_scheduled:
+                    continue
+
+                # Trip Mumbai to Pune
+                trip_mp = Trip(
+                    bus_id=bus.id,
+                    operator_id=op.id,
+                    route_id=routes["BOM_PNQ"].id,
+                    departure_time=datetime.datetime.combine(trip_date.date(), datetime.time(8, 0)).replace(tzinfo=datetime.timezone.utc),
+                    arrival_time=datetime.datetime.combine(trip_date.date(), datetime.time(11, 0)).replace(tzinfo=datetime.timezone.utc),
+                    price=650.0,
+                    status="scheduled"
+                )
+                
+                # Trip Bangalore to Hyderabad
+                trip_bh = Trip(
+                    bus_id=bus.id,
+                    operator_id=op.id,
+                    route_id=routes["BLR_HYD"].id,
+                    departure_time=datetime.datetime.combine(trip_date.date(), datetime.time(21, 0)).replace(tzinfo=datetime.timezone.utc),
+                    arrival_time=datetime.datetime.combine(trip_date.date() + datetime.timedelta(days=1), datetime.time(6, 0)).replace(tzinfo=datetime.timezone.utc),
+                    price=1200.0,
+                    status="scheduled"
+                )
+                db.add_all([trip_mp, trip_bh])
                 db.flush()
+                
+                # Seed Boarding & Dropping TripPoints for the trips
+                tp1 = TripPoint(
+                    trip_id=trip_mp.id,
+                    point_name="Mumbai Borivali East terminal",
+                    point_type="boarding",
+                    time=trip_mp.departure_time,
+                    landmark="Near National Park Gate",
+                    gps_coordinates="19.2289,72.8617",
+                    pickup_instructions="Wait next to the main ticket booking counter."
+                )
+                tp2 = TripPoint(
+                    trip_id=trip_mp.id,
+                    point_name="Sion Circle terminal",
+                    point_type="boarding",
+                    time=trip_mp.departure_time + datetime.timedelta(minutes=30),
+                    landmark="Near Sion Circle Flyover",
+                    gps_coordinates="19.0372,72.8631",
+                    pickup_instructions="Wait at the Neeta Travels office board."
+                )
+                tp3 = TripPoint(
+                    trip_id=trip_mp.id,
+                    point_name="Pune Wakad Dropoff",
+                    point_type="dropping",
+                    time=trip_mp.arrival_time - datetime.timedelta(minutes=30),
+                    landmark="Wakad Ginger Hotel",
+                    gps_coordinates="18.5991,73.7663",
+                    pickup_instructions="Drop point is near the highway flyover bypass."
+                )
+                tp4 = TripPoint(
+                    trip_id=trip_mp.id,
+                    point_name="Pune Swargate Terminal",
+                    point_type="dropping",
+                    time=trip_mp.arrival_time,
+                    landmark="Swargate Bus Stand Gate",
+                    gps_coordinates="18.5018,73.8636",
+                    pickup_instructions="Main terminal exit gate."
+                )
+                
+                tp5 = TripPoint(
+                    trip_id=trip_bh.id,
+                    point_name="Bangalore Majestic terminal",
+                    point_type="boarding",
+                    time=trip_bh.departure_time,
+                    landmark="Opposite Railway station entry",
+                    gps_coordinates="12.9778,77.5724",
+                    pickup_instructions="Wait at Platform 5 Neeta travels counter."
+                )
+                tp6 = TripPoint(
+                    trip_id=trip_bh.id,
+                    point_name="Anantapur bypass boarding",
+                    point_type="boarding",
+                    time=trip_bh.departure_time + datetime.timedelta(hours=4),
+                    landmark="Bypass Toll plaza",
+                    gps_coordinates="14.6819,77.6006",
+                    pickup_instructions="Wait on the highway service lane near toll."
+                )
+                tp7 = TripPoint(
+                    trip_id=trip_bh.id,
+                    point_name="Hyderabad Gachibowli Dropoff",
+                    point_type="dropping",
+                    time=trip_bh.arrival_time - datetime.timedelta(hours=1),
+                    landmark="Gachibowli Outer Ring Road",
+                    gps_coordinates="17.4401,78.3489",
+                    pickup_instructions="Drop point near flyover start."
+                )
+                tp8 = TripPoint(
+                    trip_id=trip_bh.id,
+                    point_name="Hyderabad Ameerpet Terminal",
+                    point_type="dropping",
+                    time=trip_bh.arrival_time,
+                    landmark="Metro station pillar A10",
+                    gps_coordinates="17.4375,78.4482",
+                    pickup_instructions="Drop point under the metro pillar."
+                )
+                db.add_all([tp1, tp2, tp3, tp4, tp5, tp6, tp7, tp8])
+            db.flush()
 
         # 10. Seed countries
         for c_name, c_code in [("India", "IN"), ("United States", "US")]:

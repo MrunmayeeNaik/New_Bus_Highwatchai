@@ -988,7 +988,12 @@ class BookingService:
 
     # --- CANCELLATION & REFUNDS ---
     def cancel_ticket(self, db: Session, user_id: UUID, cancel_in: CancellationRequest) -> Booking:
-        booking = db.query(Booking).get(cancel_in.booking_id)
+        # Scope the lookup to the caller: a booking belonging to somebody else must be
+        # indistinguishable from one that does not exist.
+        booking = db.query(Booking).filter(
+            Booking.id == cancel_in.booking_id,
+            Booking.user_id == user_id
+        ).first()
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found.")
         if booking.status != "confirmed":

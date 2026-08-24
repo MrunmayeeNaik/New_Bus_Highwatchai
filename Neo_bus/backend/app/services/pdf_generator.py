@@ -101,7 +101,8 @@ class PDFGenerator:
         except Exception:
             pass
             
-        return pdf.output()
+        # fpdf2 returns a bytearray; Starlette can only render real bytes.
+        return bytes(pdf.output())
 
     @staticmethod
     def generate_invoice_pdf(booking: Booking) -> bytes:
@@ -170,7 +171,8 @@ class PDFGenerator:
         pdf.set_font("helvetica", "I", 8)
         pdf.cell(0, 5, "This invoice registers complete taxation logs under HSN code 9964. CGST and SGST logs are reported.", ln=True)
         
-        return pdf.output()
+        # fpdf2 returns a bytearray; Starlette can only render real bytes.
+        return bytes(pdf.output())
 
     @staticmethod
     def generate_analytics_pdf(data: dict) -> bytes:
@@ -265,4 +267,5 @@ class PDFGenerator:
             pdf.cell(35, 6, f"{day.get('occupancy', 0.0):.1f}%", border=1)
             pdf.cell(35, 6, f"{day.get('cancellations', 0.0):.1f}%", border=1, ln=True)
             
-        return pdf.output()
+        # fpdf2 returns a bytearray; Starlette can only render real bytes.
+        return bytes(pdf.output())
