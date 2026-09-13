@@ -4,6 +4,33 @@ Intercity bus booking platform. React + Vite frontend, FastAPI backend, PostgreS
 
 ---
 
+## Brand
+
+Five logo concepts for NewBus, developed from a study of seven competitors --
+redBus, AbhiBus, zingbus, IntrCity SmartBus, Fresh Bus, FlixBus and Busbud.
+
+![NewBus logo concepts -- five marks shown as icon and lockup, on light and dark, scale tested from 64px down to 16px](brand/newbus-logo-concepts.png)
+
+Red and orange are held by the two largest Indian players, green is an EV claim
+we cannot back, and purple is IntrCity's. So the palette is **Midnight Navy
+`#0B1A33`** with a **Signal Teal `#0E9A92`** accent -- territory nobody in the
+category occupies.
+
+**Recommended: 01 Route N.** The letter N drawn as a journey, two uprights as
+terminals and the diagonal as the road. It is the only concept meeting all seven
+brief criteria at once, and it stays legible at 16px.
+
+| | |
+|---|---|
+| Full write-up -- research, rationale, per-concept weaknesses | [`brand/NewBus-logo-concepts.pdf`](brand/NewBus-logo-concepts.pdf) |
+| Source SVGs -- icon, light and dark | [`brand/concepts/`](brand/concepts/) |
+| Palette and file guide | [`brand/README.md`](brand/README.md) |
+
+> Concept stage. Not yet applied to the app -- the header, footer and favicon
+> are unchanged pending a decision.
+
+---
+
 ## Run it (Docker — recommended)
 
 **Requires:** Docker Desktop, running.
